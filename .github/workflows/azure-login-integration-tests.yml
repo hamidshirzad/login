@@ -127,3 +127,54 @@ jobs:
           - name: Post to slack
             shell: bash
             run: curl -X POST -H 'Content-type:application/json' --data '{"blocks":[{"type":"section","text":{"type":"mrkdwn","text":"${{steps.slack_report.outputs.report}}"}}]}' https://hooks.slack.com/services/${{SECRETS.SLACK_CHANNEL_SECRET}}
+- uses: actions/setup-node@v2
+  with:
+    node-version: '20'
+- name: Azure Login
+  uses: azure/login@v1.4.6 # Replace with the latest compatible version
+  with:
+    creds: ${{ secrets.AZURE_CREDENTIALS }}
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '20' # Ensure you use Node.js 20 or later
+      - run: pnpm install
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm vitest --coverage
+      - uses: codecov/codecov-action@v4
+      - name: Azure Login
+        uses: azure/login@v1.4.6 # Replace with the latest compatible version
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Debug Azure CLI
+        run: |
+          echo "Checking Azure CLI version..."
+          az --version
+          echo "Listing Azure subscriptions..."
+          az account list
+      - name: Debug Azure PowerShell
+        run: |
+          echo "Checking Azure PowerShell module..."
+          pwsh -Command 'Get-Module -ListAvailable Az'
+          echo "Logging in with Azure PowerShell..."
+          pwsh -Command 'Connect-AzAccount -ServicePrincipal -Credential (New-Object System.Management.Automation.PSCredential($env:AZURE_CLIENT_ID, (ConvertTo-SecureString $env:AZURE_CLIENT_SECRET -AsPlainText -Force))) -TenantId $env:AZURE_TENANT_ID'
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
